@@ -1,18 +1,44 @@
-const USER_AGENT="Mozilla/5.0 (compatible; PublicProfileLookup/1.0)";
 const clean=v=>String(v||"").trim().replace(/^@+/,"").toLowerCase();
-function num(v){if(!v)return 0;const m=String(v).replace(/,/g,".").match(/([\d.]+)\s*([kKmM])?/);if(!m)return 0;const n=Number(m[1]);return !Number.isFinite(n)?0:m[2]?.toLowerCase()==="k"?Math.round(n*1e3):m[2]?.toLowerCase()==="m"?Math.round(n*1e6):Math.round(n)}
-function meta(html,p){const r=new RegExp(`<meta[^>]+(?:property|name)=["']${p}["'][^>]+content=["']([^"']*)["']`,"i");return html.match(r)?.[1]?.replace(/&amp;/g,"&").replace(/&quot;/g,'"')||""}
+const API_VERSION=process.env.INSTAGRAM_API_VERSION||"v26.0";
+const GRAPH_HOST="https://graph.facebook.com";
+
 export default async function handler(req,res){
- if(req.method!=="GET")return res.status(405).json({error:"Method not allowed"});
- const username=clean(req.query?.username);
- if(!/^[a-z0-9._]{1,30}$/.test(username))return res.status(400).json({error:"Usuário do Instagram inválido"});
- try{
-  const r=await fetch(`https://www.instagram.com/${encodeURIComponent(username)}/`,{headers:{"User-Agent":USER_AGENT,"Accept-Language":"pt-BR,pt;q=0.9,en;q=0.8"}});
-  if(!r.ok)return res.status(r.status===404?404:502).json({error:"Não foi possível consultar o perfil público agora."});
-  const html=await r.text(),title=meta(html,"og:title"),desc=meta(html,"og:description"),image=meta(html,"og:image");
-  if(!title&&!desc&&!image)return res.status(502).json({error:"O Instagram não disponibilizou os dados públicos deste perfil neste momento."});
-  const followers=desc.match(/([\d.,]+[kKmM]?)\s+Followers/i)?.[1],following=desc.match(/([\d.,]+[kKmM]?)\s+Following/i)?.[1],posts=desc.match(/([\d.,]+[kKmM]?)\s+Posts/i)?.[1];
-  const fullName=title.replace(/\s*\(@[^)]+\).*$/i,"").replace(/\s*•\s*Instagram.*$/i,"").trim();
-  res.status(200).json({profile:{username,fullName:fullName||username,profilePic:image||"",followers:num(followers),following:num(following),posts:num(posts),isVerified:/verified|verificado/i.test(title+" "+desc),isPrivate:/private|privado/i.test(desc),related:[]}});
- }catch(e){res.status(502).json({error:"Falha ao consultar o perfil público."})}
+  if(req.method!=="GET") return res.status(405).json({error:"Method not allowed"});
+  const username=clean(req.query?.username);
+  if(!/^[a-z0-9._]{1,30}$/.test(username)) return res.status(400).json({error:"Usuário do Instagram inválido"});
+  const token=process.env.INSTAGRAM_ACCESS_TOKEN;
+  const igUserId=process.env.INSTAGRAM_USER_ID;
+  if(!token||!igUserId) return res.status(503).json({error:"Instagram API não configurada. Defina INSTAGRAM_ACCESS_TOKEN e INSTAGRAM_USER_ID na Vercel."});
+  try{
+    const fields=[
+      "username","name","biography","profile_picture_url","followers_count","follows_count","media_count",
+      "business_discovery.username("+username+"){username,name,biography,profile_picture_url,followers_count,follows_count,media_count}"
+    ].join(",");
+    const url=new URL(GRAPH_HOST+"/"+API_VERSION+"/"+encodeURIComponent(igUserId));
+    url.searchParams.set("fields",fields);
+    url.searchParams.set("access_token",token);
+    const r=await fetch(url,{headers:{"Accept":"application/json"}});
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok){
+      const msg=data?.error?.message||"Falha na API do Instagram";
+      return res.status(r.status===400?400:502).json({error:"instagram_api_error",message:msg});
+    }
+    const p=data?.business_discovery;
+    if(!p) return res.status(404).json({error:"Perfil não encontrado ou não é uma conta profissional acessível pela API oficial."});
+    return res.status(200).json({profile:{
+      username:p.username||username,
+      fullName:p.name||p.username||username,
+      profilePic:p.profile_picture_url||"",
+      followers:Number(p.followers_count||0),
+      following:Number(p.follows_count||0),
+      posts:Number(p.media_count||0),
+      biography:p.biography||"",
+      isVerified:false,
+      isPrivate:false,
+      related:[]
+    }});
+  }catch(e){
+    console.error("instagram_profile_lookup_failed",e);
+    return res.status(502).json({error:"instagram_api_unavailable",message:"Não foi possível consultar o Instagram agora."});
+  }
 }
