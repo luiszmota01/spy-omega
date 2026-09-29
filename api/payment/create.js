@@ -1,7 +1,94 @@
-export default async function handler(req,res){
- if(req.method!=="POST")return res.status(405).json({error:"Method not allowed"});
- const amount=Number(req.body?.amount??46.74);
- if(!Number.isFinite(amount)||amount<=0)return res.status(400).json({error:"Valor inválido."});
- if(!process.env.AMPLOPAY_PUBLIC_KEY||!process.env.AMPLOPAY_SECRET_KEY)return res.status(503).json({error:"Pagamento ainda não configurado.",code:"AMPL0PAY_NOT_CONFIGURED"});
- return res.status(501).json({error:"Credenciais encontradas, mas o contrato de criação do Pix da AmploPay ainda precisa ser configurado.",code:"AMPL0PAY_PAYLOAD_PENDING",amount});
+import crypto from "node:crypto";
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  const amount = Number(req.body?.amount);
+  const name = String(req.body?.name || "").trim();
+  const email = String(req.body?.email || "").trim().toLowerCase();
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ error: "Valor inválido." });
+  }
+  if (name.length < 2) {
+    return res.status(400).json({ error: "Informe seu nome." });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: "Informe um e-mail válido." });
+  }
+
+  const publicKey = process.env.AMPLOPAY_PUBLIC_KEY;
+  const secretKey = process.env.AMPLOPAY_SECRET_KEY;
+  if (!publicKey || !secretKey) {
+    return res.status(503).json({
+      error: "Pagamento ainda não configurado.",
+      code: "AMPL0PAY_NOT_CONFIGURED",
+    });
+  }
+
+  const identifier = crypto.randomUUID();
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  const protocol = req.headers["x-forwarded-proto"] || "https";
+  const callbackUrl = host ? `${protocol}://${host}/api/payment/webhook` : undefined;
+
+  const payload = {
+    identifier,
+    amount: Number(amount.toFixed(2)),
+    client: {
+      name,
+      email,
+    },
+    dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    metadata: {
+      source: "spy-omega",
+    },
+    ...(callbackUrl ? { callbackUrl } : {}),
+  };
+
+  try {
+    const response = await fetch("https://app.amplopay.com/api/v1/gateway/pix/receive", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "x-public-key": publicKey,
+        "x-secret-key": secretKey,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      return res.status(response.status >= 400 && response.status < 500 ? response.status : 502).json({
+        error: data?.message || data?.error || "A AmploPay recusou a criação do Pix.",
+        details: data?.details,
+      });
+    }
+
+    const transactionId = data?.transactionId || data?.transaction?.id || null;
+    const pixCode = data?.pix?.code || null;
+    const pixImage = data?.pix?.image || null;
+    const pixExpiresAt = data?.pix?.expiresAt || null;
+    const checkoutUrl = data?.order?.url || data?.checkoutUrl || null;
+
+    return res.status(200).json({
+      success: true,
+      identifier,
+      transactionId,
+      status: data?.status || null,
+      transactionStatus: data?.transactionStatus || null,
+      pix: {
+        code: pixCode,
+        image: pixImage,
+        expiresAt: pixExpiresAt,
+      },
+      checkout_url: checkoutUrl,
+    });
+  } catch (error) {
+    return res.status(502).json({
+      error: "Não foi possível conectar à AmploPay.",
+    });
+  }
 }
