@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -26,7 +24,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const identifier = crypto.randomUUID();
+  const identifier = `spy-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const host = req.headers["x-forwarded-host"] || req.headers.host;
   const protocol = req.headers["x-forwarded-proto"] || "https";
   const callbackUrl = host ? `${protocol}://${host}/api/payment/webhook` : undefined;
