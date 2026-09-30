@@ -57,7 +57,7 @@ export default async function handler(req, res) {
     if (!response.ok) {
       return res.status(response.status >= 400 && response.status < 500 ? response.status : 502).json({
         error: data?.message || data?.error || "A AmploPay recusou a criação do Pix.",
-        details: data?.details,
+        details: data?.details ?? data,
       });
     }
 
