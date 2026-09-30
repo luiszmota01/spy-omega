@@ -31,7 +31,7 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(200).json(data);
+    const result = data?.profile ? { ...data, profile: { ...data.profile, profilePic: `/api/instagram/avatar?username=${encodeURIComponent(data.profile.username || username)}` } } : data;\n    return res.status(200).json(result);
   } catch (error) {
     console.error("instagram_proxy_failed", error);
     return res.status(502).json({ error: "Não foi possível conectar ao backend do Instagram." });
