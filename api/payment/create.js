@@ -53,7 +53,7 @@ export default async function handler(req, res) {
         "x-secret-key": secretKey,
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(55000),
     });
 
     const data = await response.json().catch(() => ({}));
