@@ -3,12 +3,14 @@ export default async function handler(req, res) {
 
   const amount = Number(req.body?.amount);
   const name = String(req.body?.name || "").trim();
+  const email = String(req.body?.email || "").trim().toLowerCase();
   const phone = String(req.body?.phone || "").trim();
   const document = String(req.body?.document || "").replace(/\D/g, "");
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ error: "Valor inválido." });
   }
+  if (!email || !email.includes("@")) return res.status(400).json({ error: "Informe seu e-mail." });
   if (name.length < 2) {
     return res.status(400).json({ error: "Informe seu nome." });
   }
@@ -34,6 +36,7 @@ export default async function handler(req, res) {
     amount: Number(amount.toFixed(2)),
     client: {
       name,
+      email,
       phone,
       document,
     },
