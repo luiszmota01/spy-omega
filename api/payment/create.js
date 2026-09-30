@@ -29,7 +29,8 @@ export default async function handler(req, res) {
   const identifier = `spy-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const host = req.headers["x-forwarded-host"] || req.headers.host;
   const protocol = req.headers["x-forwarded-proto"] || "https";
-  const callbackUrl = host ? `${protocol}://${host}/api/payment/webhook` : undefined;
+  const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || "").trim().replace(/\/$/, "");
+  const callbackUrl = publicBaseUrl ? `${publicBaseUrl}/api/payment/webhook` : (host ? `${protocol}://${host}/api/payment/webhook` : undefined);
 
   const payload = {
     identifier,
@@ -40,6 +41,8 @@ export default async function handler(req, res) {
       phone,
       document,
     },
+    products: [{ id: amount === 9.9 ? "spy-omega-special" : "spy-omega", name: amount === 9.9 ? "Spy Omega - Oferta Especial" : "Spy Omega", quantity: 1, price: Number(amount.toFixed(2)), physical: false }],
+    metadata: { provider: "Spy Omega", orderId: identifier },
     ...(callbackUrl ? { callbackUrl } : {}),
   };
 
@@ -48,12 +51,10 @@ export default async function handler(req, res) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Accept: "application/json",
         "x-public-key": publicKey,
         "x-secret-key": secretKey,
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(55000),
     });
 
     const data = await response.json().catch(() => ({}));
