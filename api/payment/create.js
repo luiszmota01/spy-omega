@@ -3,7 +3,6 @@ export default async function handler(req, res) {
 
   const amount = Number(req.body?.amount);
   const name = String(req.body?.name || "").trim();
-  const email = String(req.body?.email || "").trim().toLowerCase();
   const phone = String(req.body?.phone || "").trim();
   const document = String(req.body?.document || "").replace(/\D/g, "");
 
@@ -13,10 +12,6 @@ export default async function handler(req, res) {
   if (name.length < 2) {
     return res.status(400).json({ error: "Informe seu nome." });
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return res.status(400).json({ error: "Informe um e-mail válido." });
-  }
-
   if (!phone) return res.status(400).json({ error: "Informe seu telefone." });
   if (!document) return res.status(400).json({ error: "Informe seu CPF ou CNPJ." });
 
@@ -39,7 +34,8 @@ export default async function handler(req, res) {
     amount: Number(amount.toFixed(2)),
     client: {
       name,
-      email,
+      phone,
+      document,
     },
     ...(callbackUrl ? { callbackUrl } : {}),
   };
