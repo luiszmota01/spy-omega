@@ -36,7 +36,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({
-      posts: Array.isArray(data?.posts) ? data.posts : [],
+      posts: Array.isArray(data?.posts) ? data.posts.map((post) => ({ ...post, profilePic: post?.username ? `/api/instagram/avatar?username=${encodeURIComponent(post.username)}` : post?.profilePic })) : [],
       suggestions: Array.isArray(data?.suggestions) ? data.suggestions : [],
     });
   } catch (error) {
