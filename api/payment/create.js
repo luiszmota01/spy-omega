@@ -36,10 +36,6 @@ export default async function handler(req, res) {
       name,
       email,
     },
-    dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    metadata: {
-      source: "spy-omega",
-    },
     ...(callbackUrl ? { callbackUrl } : {}),
   };
 
