@@ -4,6 +4,8 @@ export default async function handler(req, res) {
   const amount = Number(req.body?.amount);
   const name = String(req.body?.name || "").trim();
   const email = String(req.body?.email || "").trim().toLowerCase();
+  const phone = String(req.body?.phone || "").trim();
+  const document = String(req.body?.document || "").replace(/\D/g, "");
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ error: "Valor inválido." });
@@ -14,6 +16,9 @@ export default async function handler(req, res) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: "Informe um e-mail válido." });
   }
+
+  if (!phone) return res.status(400).json({ error: "Informe seu telefone." });
+  if (!document) return res.status(400).json({ error: "Informe seu CPF ou CNPJ." });
 
   const publicKey = process.env.AMPLOPAY_PUBLIC_KEY;
   const secretKey = process.env.AMPLOPAY_SECRET_KEY;
