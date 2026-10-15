@@ -1,0 +1,26 @@
+name: Keep Render Instagram API Awake
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  keep-awake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Wake Render service
+        run: |
+          set -eu
+          for attempt in 1 2 3; do
+            if curl --fail --silent --show-error --max-time 90 "https://spy-omega.onrender.com/health"; then
+              echo
+              echo "Render health endpoint responded successfully."
+              exit 0
+            fi
+            echo "Health check attempt $attempt failed; retrying in 10 seconds."
+            sleep 10
+          done
+          echo "Render did not respond after 3 attempts."
+          exit 1
