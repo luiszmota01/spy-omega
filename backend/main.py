@@ -81,22 +81,6 @@ def serialize_user(user: Any) -> dict[str, Any]:
     }
 
 
-def is_authentication_error(exc: Exception) -> bool:
-    """Return True when Instagram explicitly rejects the current authentication."""
-    message = f"{type(exc).__name__}: {exc}".lower()
-    return any(
-        marker in message
-        for marker in (
-            "loginrequired",
-            "login_required",
-            "clientunauthorizederror",
-            "401 client error",
-            "http 401",
-            "unauthorized",
-        )
-    )
-
-
 def lookup_profile(username: str) -> dict[str, Any]:
     now = time.time()
     cached = _cache.get(username)
@@ -122,13 +106,6 @@ def lookup_profile(username: str) -> dict[str, Any]:
             user = cl.user_info_by_username(username, use_cache=False)
         except Exception as exc:
             errors.append(f"user_info_by_username: {type(exc).__name__}: {exc}")
-            # If Instagram has explicitly rejected authentication, don't make
-            # another sequential request through the legacy GraphQL fallback.
-            if is_authentication_error(exc):
-                raise RuntimeError(
-                    "Instagram recusou a autenticação; fallback GraphQL ignorado. "
-                    + " | ".join(errors)
-                ) from exc
 
     if user is None:
         try:
