@@ -1,0 +1,146 @@
+name: Spy Omega - monitoramento da consulta
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: spy-omega-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Testar consulta real de perfil
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          ALERT_EMAIL: luizbernarde35@gmail.com
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import smtplib
+          import ssl
+          import sys
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from email.message import EmailMessage
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          issue_title = "[Spy Omega Monitor] Falha na consulta de perfil"
+          check_url = "https://spy-omega.onrender.com/api/instagram/profile?username=instagram"
+
+          def request(url, headers=None, data=None, method=None, timeout=20):
+              req = urllib.request.Request(url, headers=headers or {}, data=data, method=method)
+              with urllib.request.urlopen(req, timeout=timeout) as response:
+                  return response.status, response.read().decode("utf-8", "replace")
+
+          def github_request(path, method="GET", payload=None):
+              headers = {
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {token}",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "User-Agent": "spy-omega-monitor",
+              }
+              data = json.dumps(payload).encode() if payload is not None else None
+              return request(f"https://api.github.com/repos/{repo}/{path}", headers, data, method)
+
+          failure = None
+          for attempt in range(2):
+              try:
+                  status, body = request(
+                      check_url,
+                      {"Accept": "application/json", "User-Agent": "Spy-Omega-Monitor"},
+                      timeout=25,
+                  )
+                  parsed = json.loads(body)
+                  profile = parsed.get("profile") if isinstance(parsed, dict) else None
+                  if status != 200 or not isinstance(profile, dict) or str(profile.get("username", "")).lower() != "instagram":
+                      raise RuntimeError(f"Resposta inesperada (HTTP {status}): {body[:500]}")
+                  failure = None
+                  break
+              except Exception as exc:
+                  failure = f"{type(exc).__name__}: {exc}"
+                  if attempt == 0:
+                      time.sleep(10)
+
+          try:
+              _, issues_body = github_request("issues?state=open&per_page=100")
+              open_issues = json.loads(issues_body)
+              alert_issue = next(
+                  (item for item in open_issues
+                   if item.get("title") == issue_title and "pull_request" not in item),
+                  None,
+              )
+          except Exception as exc:
+              print(f"Não foi possível consultar o estado do alerta no GitHub: {exc}")
+              sys.exit(1)
+
+          if failure:
+              print(f"Falha confirmada na consulta: {failure}")
+              if alert_issue:
+                  print("Já existe um alerta aberto; e-mail não será repetido.")
+                  sys.exit(1)
+
+              username = os.environ.get("SMTP_USERNAME", "").strip()
+              password = os.environ.get("SMTP_PASSWORD", "").strip()
+              recipient = os.environ["ALERT_EMAIL"].strip()
+              if not username or not password:
+                  print("FALTA CONFIGURAR SMTP_USERNAME e SMTP_PASSWORD nos GitHub Actions Secrets.")
+                  sys.exit(1)
+
+              msg = EmailMessage()
+              msg["Subject"] = "ALERTA: consulta do Spy Omega falhou"
+              msg["From"] = username
+              msg["To"] = recipient
+              msg.set_content(
+                  "O monitoramento do Spy Omega confirmou falha na consulta de perfil após duas tentativas.\n\n"
+                  f"Horário UTC: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())}\n"
+                  f"Endpoint verificado: {check_url}\n"
+                  f"Erro: {failure}\n\n"
+                  "O monitoramento não alterou o código da consulta nem trocou credenciais. "
+                  "Verifique os logs do serviço Render e a autenticação do Instagram.\n"
+              )
+              context = ssl.create_default_context()
+              with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context, timeout=20) as server:
+                  server.login(username, password)
+                  server.send_message(msg)
+
+              github_request(
+                  "issues",
+                  method="POST",
+                  payload={
+                      "title": issue_title,
+                      "body": (
+                          "O monitoramento confirmou falha na consulta de perfil e enviou um e-mail.\n\n"
+                          f"- Horário UTC: {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())}\n"
+                          f"- Endpoint: {check_url}\n"
+                          f"- Erro: {failure}\n\n"
+                          "Este issue é usado para evitar e-mails repetidos enquanto a falha persistir. "
+                          "Será fechado automaticamente quando a consulta voltar a responder corretamente."
+                      ),
+                  },
+              )
+              print(f"Alerta enviado para {recipient}.")
+              sys.exit(1)
+
+          print("Consulta de perfil respondeu corretamente.")
+          if alert_issue:
+              number = alert_issue["number"]
+              github_request(f"issues/{number}", method="PATCH", payload={"state": "closed"})
+              print("A consulta se recuperou; alerta anterior foi fechado.")
+          PY
