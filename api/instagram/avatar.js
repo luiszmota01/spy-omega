@@ -84,20 +84,20 @@ export default async function handler(req, res) {
   let source = "render";
   const token = String(process.env.APIFY_TOKEN || "").trim();
 
-  if (token) {
+  // First try the existing backend: it is normally much faster than starting an Apify actor.
+  // Only use Apify when the existing avatar URL is unavailable/expired.
+  try {
+    image = await getRenderImage(username);
+  } catch (error) {
+    console.error("render_avatar_primary_failed", { name: error?.name || "Error" });
+  }
+
+  if (!image && token) {
     try {
       image = await getApifyImage(username, token);
       source = "apify";
     } catch (error) {
-      console.error("apify_avatar_failed_falling_back", { name: error?.name || "Error" });
-    }
-  }
-
-  if (!image) {
-    try {
-      image = await getRenderImage(username);
-    } catch (error) {
-      console.error("render_avatar_fallback_failed", { name: error?.name || "Error" });
+      console.error("apify_avatar_fallback_failed", { name: error?.name || "Error" });
     }
   }
 
