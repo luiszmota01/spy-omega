@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teste isolado — foto de perfil Apify</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+body{margin:0;min-height:100vh;background:#0b1020;color:#f4f6ff;display:grid;place-items:center;padding:24px;box-sizing:border-box}
+main{width:min(100%,420px);background:#141b30;border:1px solid #293454;border-radius:20px;padding:24px;box-sizing:border-box;text-align:center}
+h1{font-size:1.25rem;margin:0 0 8px}p{color:#b8c2df;line-height:1.5}
+img{display:block;width:150px;height:150px;object-fit:cover;border-radius:50%;margin:22px auto;border:2px solid #6576ff;background:#222b43}
+#status{font-weight:700;margin:14px 0;color:#ffd479}
+small{display:block;color:#98a5c9;overflow-wrap:anywhere}
+a{color:#aebaff}
+</style>
+</head>
+<body>
+<main>
+<h1>Teste da foto de perfil do Apify</h1>
+<p>Conta de teste: <strong>@wqiber</strong></p>
+<img id="avatar" alt="Foto de perfil retornada pelo Apify">
+<div id="status" role="status">Carregando imagem…</div>
+<p>Este teste usa diretamente a URL retornada pelo Apify. Nenhum dado ou configuração de produção foi alterado.</p>
+<small id="url"></small>
+<p><a href="https://www.instagram.com/wqiber/" target="_blank" rel="noopener noreferrer">Abrir perfil no Instagram</a></p>
+</main>
+<script>
+const imageUrl = "https://instagram.fpoa33-1.fna.fbcdn.net/v/t51.2885-19/573323465_1219825463302212_7278921664109726296_n.png?stp=dst-jpg_e0_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xNTAuYzIifQ&_nc_ht=instagram.fpoa33-1.fna.fbcdn.net&_nc_cat=1&_nc_oc=Q6cZ2gFbS3u67UxaKsdnU7ZrfWR-MIglxWd8sbEKAXU1_KduI4F36r2M9Y2SNoFbqaVX99B1FeqJjTn1e1i_84taM_s0&_nc_ohc=r54-Qnf4NowQ7kNvwFKmm1E&_nc_gid=A7KPwwSbUv_SEhmHC0OXBw&edm=AB11_MABAAAA&ccb=7-5&ig_cache_key=YW5vbnltb3VzX3Byb2ZpbGVfcGlj.3-ccb7-5&oh=00_AQPUhhdXQzq_hfca6ATTtz3W0hXCZDziiQcIqVnJbtwsyQ&oe=6AD9566A&_nc_sid=dc5e7f";
+const img = document.getElementById('avatar');
+const status = document.getElementById('status');
+document.getElementById('url').textContent = 'URL de origem: ' + imageUrl;
+img.onload = () => { status.textContent = 'SUCESSO: a imagem carregou no navegador.'; status.style.color = '#7ee0ae'; };
+img.onerror = () => { status.textContent = 'FALHA: o navegador não conseguiu carregar esta URL. Ela pode ter expirado ou estar bloqueada.'; status.style.color = '#ff9d9d'; };
+img.src = imageUrl;
+</script>
+</body>
+</html>
