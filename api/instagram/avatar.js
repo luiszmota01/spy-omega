@@ -54,21 +54,6 @@ async function getApifyImage(username, token) {
   return image;
 }
 
-async function getRenderImage(username) {
-  const upstream = String(process.env.RENDER_INSTAGRAM_API || "").replace(/\/$/, "");
-  if (!upstream) return null;
-
-  const profileUrl = new URL(upstream + "/api/instagram/profile");
-  profileUrl.searchParams.set("username", username);
-  const profileResponse = await fetch(profileUrl, {
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(20000),
-  });
-  const profileData = await profileResponse.json().catch(() => ({}));
-  if (!profileResponse.ok || !profileData?.profile?.profilePic) return null;
-  return downloadImage(profileData.profile.profilePic, 10000);
-}
-
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
@@ -80,34 +65,22 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Usuário do Instagram inválido" });
   }
 
-  let image = null;
-  let source = "render";
   const token = String(process.env.APIFY_TOKEN || "").trim();
+  if (!token) {
+    return res.status(503).json({ error: "APIFY_TOKEN não está configurado no ambiente Preview da Vercel." });
+  }
 
-  // First try the existing backend: it is normally much faster than starting an Apify actor.
-  // Only use Apify when the existing avatar URL is unavailable/expired.
   try {
-    image = await getRenderImage(username);
+    const image = await getApifyImage(username, token);
+    res.setHeader("Content-Type", image.contentType);
+    res.setHeader("Content-Length", String(image.buffer.length));
+    res.setHeader("Cache-Control", "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400");
+    res.setHeader("X-Avatar-Source", "apify");
+    return res.status(200).send(image.buffer);
   } catch (error) {
-    console.error("render_avatar_primary_failed", { name: error?.name || "Error" });
+    console.error("apify_avatar_failed", { name: error?.name || "Error" });
+    return res.status(error?.name === "TimeoutError" ? 504 : 502).json({
+      error: error?.name === "TimeoutError" ? "A consulta da foto expirou. Tente novamente." : "Não foi possível consultar a foto pela Apify.",
+    });
   }
-
-  if (!image && token) {
-    try {
-      image = await getApifyImage(username, token);
-      source = "apify";
-    } catch (error) {
-      console.error("apify_avatar_fallback_failed", { name: error?.name || "Error" });
-    }
-  }
-
-  if (!image) {
-    return res.status(404).json({ error: "Foto de perfil não encontrada." });
-  }
-
-  res.setHeader("Content-Type", image.contentType);
-  res.setHeader("Content-Length", String(image.buffer.length));
-  res.setHeader("Cache-Control", "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400");
-  res.setHeader("X-Avatar-Source", source);
-  return res.status(200).send(image.buffer);
 }
