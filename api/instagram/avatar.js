@@ -1,60 +1,92 @@
-const clean = (v) => String(v || "").trim().replace(/^@+/, "").toLowerCase();
+const clean = (value) => String(value || "").trim().replace(/^@+/, "").toLowerCase();
+const IMAGE_ACCEPT = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8";
+const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136 Safari/537.36";
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+function isAllowedImageUrl(value) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    return url.protocol === "https:" && (host.endsWith(".fbcdn.net") || host.endsWith(".cdninstagram.com"));
+  } catch {
+    return false;
+  }
+}
+
+async function downloadImage(url, timeoutMs = 10000) {
+  if (!isAllowedImageUrl(url)) return null;
+  const response = await fetch(url, {
+    headers: { Accept: IMAGE_ACCEPT, Referer: "https://www.instagram.com/", "User-Agent": USER_AGENT },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) return null;
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.startsWith("image/")) return null;
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) return null;
+  return { buffer, contentType };
+}
+
+async function getApifyImage(username, token) {
+  const actorUrl = new URL("https://api.apify.com/v2/acts/apify~instagram-profile-scraper/run-sync-get-dataset-items");
+  actorUrl.searchParams.set("token", token);
+  actorUrl.searchParams.set("format", "json");
+  actorUrl.searchParams.set("clean", "true");
+  actorUrl.searchParams.set("limit", "1");
+  actorUrl.searchParams.set("timeout", "45");
+
+  const response = await fetch(actorUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ usernames: [username], includeAboutSection: false }),
+    signal: AbortSignal.timeout(55000),
+  });
+  if (!response.ok) throw new Error("APIFY_REQUEST_FAILED");
+
+  const items = await response.json();
+  const profile = Array.isArray(items)
+    ? items.find((item) => clean(item?.username) === username) || items[0]
+    : null;
+  const imageUrl = profile?.profilePicUrlHD || profile?.profilePicUrl;
+  if (!imageUrl) throw new Error("APIFY_IMAGE_NOT_FOUND");
+  const image = await downloadImage(imageUrl);
+  if (!image) throw new Error("APIFY_IMAGE_DOWNLOAD_FAILED");
+  return image;
+}
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") return res.status(405).end();
-
-  const username = clean(req.query?.username);
-  if (!/^[a-z0-9._]{1,30}$/.test(username)) {
-    return res.status(400).json({ error: "Usuário do Instagram inválido" });
+  if (req.method !== "GET") {
+    res.setHeader("Allow", "GET");
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const upstream = String(process.env.RENDER_INSTAGRAM_API || "").replace(/\/$/, "");
-  if (!upstream) return res.status(503).json({ error: "Instagram API não configurada." });
-
   try {
-    const profileUrl = new URL(upstream + "/api/instagram/profile");
-    profileUrl.searchParams.set("username", username);
+    // Use the image URL already returned by the profile/feed request.
+    // This avoids launching a second Apify scrape just to retrieve the avatar.
+    const sourceUrl = String(req.query?.url || "").trim();
+    let image = sourceUrl ? await downloadImage(sourceUrl) : null;
 
-    const profileResponse = await fetch(profileUrl, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(50000),
-    });
-    const profileData = await profileResponse.json().catch(() => ({}));
-
-    if (!profileResponse.ok || !profileData?.profile?.profilePic) {
-      return res.status(profileResponse.ok ? 404 : profileResponse.status).json({
-        error: "Foto de perfil não encontrada.",
-      });
+    // Compatibility fallback for existing callers that only pass a username.
+    if (!image && !sourceUrl) {
+      const username = clean(req.query?.username);
+      if (!/^[a-z0-9._]{1,30}$/.test(username)) {
+        return res.status(400).json({ error: "Usuário do Instagram inválido" });
+      }
+      const token = String(process.env.APIFY_TOKEN || "").trim();
+      if (!token) return res.status(503).json({ error: "APIFY_TOKEN não está configurado no ambiente Preview da Vercel." });
+      image = await getApifyImage(username, token);
     }
 
-    const imageResponse = await fetch(profileData.profile.profilePic, {
-      headers: {
-        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-        Referer: "https://www.instagram.com/",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136 Safari/537.36",
-      },
-      signal: AbortSignal.timeout(20000),
-    });
-
-    if (!imageResponse.ok) {
-      return res.status(502).json({ error: "O CDN do Instagram recusou a foto." });
-    }
-
-    const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
-    if (!contentType.startsWith("image/")) {
-      return res.status(502).json({ error: "O Instagram não retornou uma imagem." });
-    }
-
-    const buffer = Buffer.from(await imageResponse.arrayBuffer());
-    if (!buffer.length || buffer.length > 5 * 1024 * 1024) {
-      return res.status(502).json({ error: "Imagem de perfil inválida." });
-    }
-
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300, stale-while-revalidate=600");
-    return res.status(200).send(buffer);
+    if (!image) return res.status(502).json({ error: "Não foi possível carregar a foto de perfil." });
+    res.setHeader("Content-Type", image.contentType);
+    res.setHeader("Content-Length", String(image.buffer.length));
+    res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800");
+    res.setHeader("X-Avatar-Source", sourceUrl ? "apify-profile-result" : "apify");
+    return res.status(200).send(image.buffer);
   } catch (error) {
-    console.error("instagram_avatar_proxy_failed", error);
-    return res.status(502).json({ error: "Não foi possível carregar a foto de perfil." });
+    console.error("apify_avatar_failed", { name: error?.name || "Error" });
+    return res.status(error?.name === "TimeoutError" ? 504 : 502).json({
+      error: error?.name === "TimeoutError" ? "A consulta da foto expirou. Tente novamente." : "Não foi possível consultar a foto pela Apify.",
+    });
   }
 }
