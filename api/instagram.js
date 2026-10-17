@@ -1,5 +1,5 @@
 const clean = (v) => String(v || "").trim().replace(/^@+/, "").toLowerCase();
-const avatarPath = (username) => `/api/instagram/avatar?username=${encodeURIComponent(username)}`;
+const avatarPath = (imageUrl) => imageUrl ? `/api/instagram/avatar?url=${encodeURIComponent(String(imageUrl))}` : "";
 const validUsername = (username) => /^[a-z0-9._]{1,30}$/.test(username);
 
 function firstValue(...values) {
@@ -12,17 +12,18 @@ function normalizeProfile(item, requestedUsername) {
   const relatedRaw = firstValue(item?.relatedProfiles, item?.related_profiles, item?.related, []);
   const related = Array.isArray(relatedRaw) ? relatedRaw.map((profile) => {
     const relatedUsername = clean(firstValue(profile?.username, profile?.userName, profile?.ownerUsername));
+    const relatedPicture = firstValue(profile?.profilePicUrlHD, profile?.profilePicUrl, profile?.profile_pic_url, profile?.profilePictureUrl, "");
     return {
       ...profile,
       username: relatedUsername,
-      profilePic: relatedUsername ? avatarPath(relatedUsername) : firstValue(profile?.profilePic, profile?.profilePicUrlHD, profile?.profilePicUrl, ""),
+      profilePic: avatarPath(relatedPicture) || (relatedUsername ? `/api/instagram/avatar?username=${encodeURIComponent(relatedUsername)}` : ""),
     };
   }) : [];
 
   return {
     username,
     fullName: String(firstValue(item?.fullName, item?.full_name, item?.name, "") || ""),
-    profilePic: picture ? avatarPath(username) : "",
+    profilePic: avatarPath(picture),
     followers: Number(firstValue(item?.followersCount, item?.followers, item?.followerCount, item?.follower_count, 0)) || 0,
     following: Number(firstValue(item?.followsCount, item?.following, item?.followingCount, item?.following_count, 0)) || 0,
     posts: Number(firstValue(item?.postsCount, item?.posts, item?.mediaCount, item?.media_count, 0)) || 0,
