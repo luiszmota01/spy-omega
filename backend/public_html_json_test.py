@@ -83,8 +83,8 @@ def parse_json_candidates(scripts: list[tuple[str, str, str]]) -> list[Any]:
 
         # Parse known public page-state assignments only; no additional requests.
         patterns = (
-            r"window\\._sharedData\\s*=\\s*(\\{.*?\\})\\s*;",
-            r"window\\.__additionalDataLoaded\\([^,]+,\\s*(\\{.*?\\})\\s*\\)\\s*;",
+            r"window\._sharedData\s*=\s*(\{.*?\})\s*;",
+            r"window\.__additionalDataLoaded\([^,]+,\s*(\{.*?\})\s*\)\s*;",
         )
         for pattern in patterns:
             for match in re.finditer(pattern, source, flags=re.DOTALL):
