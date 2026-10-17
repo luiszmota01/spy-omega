@@ -1,5 +1,5 @@
 const clean = (v) => String(v || "").trim().replace(/^@+/, "").toLowerCase();
-const avatarPath = (username) => `/api/instagram/avatar?username=${encodeURIComponent(username)}`;
+const avatarPath = (imageUrl) => imageUrl ? `/api/instagram/avatar?url=${encodeURIComponent(String(imageUrl))}` : "";
 const validUsername = (username) => /^[a-z0-9._]{1,30}$/.test(username);
 
 function firstValue(...values) {
@@ -22,11 +22,12 @@ function normalizePost(post, username, profile) {
   const id = String(firstValue(post?.id, post?.pk, code, "") || "");
   const date = firstValue(post?.timestamp, post?.takenAt, post?.taken_at, post?.date, "");
   const isVideo = Boolean(firstValue(post?.isVideo, post?.is_video, post?.videoUrl, post?.video_url, false));
+  const profilePicture = firstValue(profile?.profilePicUrlHD, profile?.profilePicUrl, profile?.profile_pic_url, profile?.profilePictureUrl, "");
   return {
     id,
     username,
     fullName: String(firstValue(profile?.fullName, profile?.full_name, profile?.name, username) || username),
-    profilePic: avatarPath(username),
+    profilePic: avatarPath(profilePicture) || `/api/instagram/avatar?username=${encodeURIComponent(username)}`,
     caption: String(firstValue(post?.caption, post?.captionText, post?.caption_text, "") || ""),
     mediaType: isVideo ? "video" : "image",
     mediaUrl: url,
@@ -90,11 +91,12 @@ export default async function handler(req, res) {
       const related = Array.isArray(profile.relatedProfiles) ? profile.relatedProfiles : [];
       for (const item of related) {
         const relatedUsername = clean(item?.username || item?.userName);
+        const relatedPicture = firstValue(item?.profilePicUrlHD, item?.profilePicUrl, item?.profile_pic_url, item?.profilePictureUrl, "");
         if (relatedUsername && relatedUsername !== exclude) {
           suggestions.push({
             ...item,
             username: relatedUsername,
-            profilePic: avatarPath(relatedUsername),
+            profilePic: avatarPath(relatedPicture) || `/api/instagram/avatar?username=${encodeURIComponent(relatedUsername)}`,
           });
         }
       }
