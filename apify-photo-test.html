@@ -9,39 +9,69 @@
 body{margin:0;min-height:100vh;background:#0b1020;color:#f4f6ff;display:grid;place-items:center;padding:24px;box-sizing:border-box}
 main{width:min(100%,420px);background:#141b30;border:1px solid #293454;border-radius:20px;padding:24px;box-sizing:border-box;text-align:center}
 h1{font-size:1.25rem;margin:0 0 8px}p{color:#b8c2df;line-height:1.5}
+input,button{box-sizing:border-box;width:100%;padding:12px;border-radius:10px;border:1px solid #394568;margin-top:8px;font:inherit}
+input{background:#0b1020;color:#fff}button{background:#5865f2;color:#fff;font-weight:700;border:0}
 img{display:block;width:150px;height:150px;object-fit:cover;border-radius:50%;margin:22px auto;border:2px solid #6576ff;background:#222b43}
 #status{font-weight:700;margin:14px 0;color:#ffd479}
 small{display:block;color:#98a5c9;overflow-wrap:anywhere}
-a{color:#aebaff}
 </style>
 </head>
 <body>
 <main>
-<h1>Teste da foto de perfil do Apify</h1>
-<p>Conta de teste: <strong>@wqiber</strong></p>
-<img id="avatar" alt="Foto de perfil retornada pelo Apify">
-<div id="status" role="status">Carregando imagem…</div>
-<p>Teste isolado: o servidor tenta baixar a URL retornada pelo Apify e entregar a imagem ao navegador. Nenhum dado ou configuração de produção foi alterado.</p>
-<small id="url"></small>
-<p><a href="https://www.instagram.com/wqiber/" target="_blank" rel="noopener noreferrer">Abrir perfil no Instagram</a></p>
+<h1>Teste da foto de perfil pela Apify</h1>
+<p>Este teste consulta a Apify em tempo real e entrega a imagem pelo servidor. Não altera as rotas de produção.</p>
+<form id="lookup">
+<label for="username">Usuário do Instagram</label>
+<input id="username" value="wqiber" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+<button type="submit">Testar foto</button>
+</form>
+<img id="avatar" alt="Foto de perfil retornada pela Apify" hidden>
+<div id="status" role="status">Pronto para testar.</div>
+<small id="details"></small>
 </main>
 <script>
+const form = document.getElementById('lookup');
+const input = document.getElementById('username');
 const img = document.getElementById('avatar');
 const status = document.getElementById('status');
-document.getElementById('url').textContent = 'Fonte: Apify → endpoint de teste no servidor (URL original não exposta nesta página).';
-img.onload = () => { status.textContent = 'SUCESSO: o servidor baixou e entregou a imagem.'; status.style.color = '#7ee0ae'; };
-img.onerror = async () => {
-  status.textContent = 'FALHA: o servidor não conseguiu entregar a imagem. Consultando diagnóstico…';
-  status.style.color = '#ff9d9d';
+const details = document.getElementById('details');
+let currentObjectUrl = null;
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const username = input.value.trim().replace(/^@+/, '');
+  if (!username) return;
+  img.hidden = true;
+  status.textContent = 'Consultando Apify…';
+  status.style.color = '#ffd479';
+  details.textContent = '';
   try {
-    const response = await fetch('/api/apify-photo-proxy');
-    const data = await response.json();
-    status.textContent = 'FALHA no download pelo servidor: ' + (data.error || 'erro desconhecido') + (data.upstreamStatus ? ' (HTTP ' + data.upstreamStatus + ')' : '') + (data.reason ? ' (' + data.reason + ')' : '');
+    const response = await fetch('/api/apify-photo-proxy?username=' + encodeURIComponent(username));
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      status.textContent = data.error || 'Falha ao consultar a foto.';
+      details.textContent = 'Código: ' + (data.code || response.status) + (data.upstreamStatus ? ' · HTTP upstream ' + data.upstreamStatus : '');
+      return;
+    }
+    const blob = await response.blob();
+    if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+    currentObjectUrl = URL.createObjectURL(blob);
+    img.onload = () => {
+      img.hidden = false;
+      status.textContent = 'SUCESSO: foto obtida pela Apify e entregue pelo servidor.';
+      status.style.color = '#7ee0ae';
+      details.textContent = 'Perfil: @' + username + ' · Tipo: ' + (blob.type || 'imagem');
+    };
+    img.onerror = () => {
+      status.textContent = 'O servidor retornou dados que o navegador não conseguiu exibir.';
+      status.style.color = '#ff9d9d';
+    };
+    img.src = currentObjectUrl;
   } catch (_) {
-    status.textContent = 'FALHA: endpoint de teste indisponível.';
+    status.textContent = 'Falha ao conectar ao endpoint de teste.';
+    status.style.color = '#ff9d9d';
+    details.textContent = 'Confira se o deployment Preview está disponível.';
   }
-};
-img.src = '/api/apify-photo-proxy';
+});
 </script>
 </body>
 </html>
