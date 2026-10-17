@@ -120,7 +120,7 @@ def feed(
                 "mediaType": media_type,
                 "mediaUrl": media_url,
                 "thumbnailUrl": str(getattr(post, "url", "") or media_url),
-                "permalink": str(getattr(post, "url", "") or ""),
+                "permalink": ("https://www.instagram.com/p/" + str(getattr(post, "shortcode", "") or "") + "/") if getattr(post, "shortcode", "") else "",
                 "timestamp": post.date_utc.isoformat() if getattr(post, "date_utc", None) else "",
             })
             if len(posts) >= limit:
