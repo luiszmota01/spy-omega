@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from instagrapi import Client
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9._]{1,30}$")
-CACHE_TTL_SECONDS = 60
+CACHE_TTL_SECONDS = 300
 
 app = FastAPI(title="Spy Omega Instagram API", version="1.0.0")
 
@@ -37,8 +37,8 @@ def make_client() -> Client:
     password = os.getenv("IG_PASSWORD", "").strip()
 
     cl = Client(
-        request_timeout=15,
-        public_request_retries_count=1,
+        request_timeout=8,
+        public_request_retries_count=0,
         public_transport="curl",
         public_transport_impersonate="chrome136",
     )
@@ -95,23 +95,27 @@ def lookup_profile(username: str) -> dict[str, Any]:
         getattr(cl, "authorization_data", None) or getattr(cl, "sessionid", None)
     )
 
+    def timed_lookup(label: str, lookup):
+        started = time.perf_counter()
+        try:
+            result = lookup()
+            elapsed = time.perf_counter() - started
+            print(f"instagram_lookup_method[{username}][{label}]: {elapsed:.2f}s success={result is not None}")
+            return result
+        except Exception as exc:
+            elapsed = time.perf_counter() - started
+            errors.append(f"{label}: {type(exc).__name__}: {exc}")
+            print(f"instagram_lookup_method[{username}][{label}]: {elapsed:.2f}s error={type(exc).__name__}")
+            return None
+
     if has_private_auth:
-        try:
-            user = cl.user_info_by_username_v1(username)
-        except Exception as exc:
-            errors.append(f"user_info_by_username_v1: {type(exc).__name__}: {exc}")
+        user = timed_lookup("v1", lambda: cl.user_info_by_username_v1(username))
 
     if user is None:
-        try:
-            user = cl.user_info_by_username(username, use_cache=False)
-        except Exception as exc:
-            errors.append(f"user_info_by_username: {type(exc).__name__}: {exc}")
+        user = timed_lookup("standard", lambda: cl.user_info_by_username(username, use_cache=False))
 
     if user is None:
-        try:
-            user = cl.user_info_by_username_v2_gql(username)
-        except Exception as exc:
-            errors.append(f"user_info_by_username_v2_gql: {type(exc).__name__}: {exc}")
+        user = timed_lookup("graphql", lambda: cl.user_info_by_username_v2_gql(username))
 
     if user is None:
         raise RuntimeError(" | ".join(errors) or "Instagram profile lookup failed")
