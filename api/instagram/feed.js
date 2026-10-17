@@ -1,4 +1,5 @@
 const clean = (v) => String(v || "").trim().replace(/^@+/, "").toLowerCase();
+const avatarPath = (username) => `/api/instagram/avatar?username=${encodeURIComponent(username)}`;
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
@@ -35,10 +36,20 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(200).json({
-      posts: Array.isArray(data?.posts) ? data.posts.map((post) => ({ ...post, profilePic: post?.username ? `/api/instagram/avatar?username=${encodeURIComponent(post.username)}` : post?.profilePic })) : [],
-      suggestions: Array.isArray(data?.suggestions) ? data.suggestions : [],
-    });
+    const posts = Array.isArray(data?.posts)
+      ? data.posts.map((post) => ({
+          ...post,
+          profilePic: post?.username ? avatarPath(clean(post.username)) : post?.profilePic,
+        }))
+      : [];
+    const suggestions = Array.isArray(data?.suggestions)
+      ? data.suggestions.map((profile) => ({
+          ...profile,
+          profilePic: profile?.username ? avatarPath(clean(profile.username)) : profile?.profilePic,
+        }))
+      : [];
+
+    return res.status(200).json({ posts, suggestions });
   } catch (error) {
     console.error("instagram_feed_proxy_failed", error);
     return res.status(502).json({ error: "Não foi possível conectar ao backend do Instagram." });
