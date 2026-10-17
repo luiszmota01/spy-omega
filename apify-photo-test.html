@@ -21,18 +21,27 @@ a{color:#aebaff}
 <p>Conta de teste: <strong>@wqiber</strong></p>
 <img id="avatar" alt="Foto de perfil retornada pelo Apify">
 <div id="status" role="status">Carregando imagem…</div>
-<p>Este teste usa diretamente a URL retornada pelo Apify. Nenhum dado ou configuração de produção foi alterado.</p>
+<p>Teste isolado: o servidor tenta baixar a URL retornada pelo Apify e entregar a imagem ao navegador. Nenhum dado ou configuração de produção foi alterado.</p>
 <small id="url"></small>
 <p><a href="https://www.instagram.com/wqiber/" target="_blank" rel="noopener noreferrer">Abrir perfil no Instagram</a></p>
 </main>
 <script>
-const imageUrl = "https://instagram.fpoa33-1.fna.fbcdn.net/v/t51.2885-19/573323465_1219825463302212_7278921664109726296_n.png?stp=dst-jpg_e0_s150x150_tt6&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLmRqYW5nby4xNTAuYzIifQ&_nc_ht=instagram.fpoa33-1.fna.fbcdn.net&_nc_cat=1&_nc_oc=Q6cZ2gFbS3u67UxaKsdnU7ZrfWR-MIglxWd8sbEKAXU1_KduI4F36r2M9Y2SNoFbqaVX99B1FeqJjTn1e1i_84taM_s0&_nc_ohc=r54-Qnf4NowQ7kNvwFKmm1E&_nc_gid=A7KPwwSbUv_SEhmHC0OXBw&edm=AB11_MABAAAA&ccb=7-5&ig_cache_key=YW5vbnltb3VzX3Byb2ZpbGVfcGlj.3-ccb7-5&oh=00_AQPUhhdXQzq_hfca6ATTtz3W0hXCZDziiQcIqVnJbtwsyQ&oe=6AD9566A&_nc_sid=dc5e7f";
 const img = document.getElementById('avatar');
 const status = document.getElementById('status');
-document.getElementById('url').textContent = 'URL de origem: ' + imageUrl;
-img.onload = () => { status.textContent = 'SUCESSO: a imagem carregou no navegador.'; status.style.color = '#7ee0ae'; };
-img.onerror = () => { status.textContent = 'FALHA: o navegador não conseguiu carregar esta URL. Ela pode ter expirado ou estar bloqueada.'; status.style.color = '#ff9d9d'; };
-img.src = imageUrl;
+document.getElementById('url').textContent = 'Fonte: Apify → endpoint de teste no servidor (URL original não exposta nesta página).';
+img.onload = () => { status.textContent = 'SUCESSO: o servidor baixou e entregou a imagem.'; status.style.color = '#7ee0ae'; };
+img.onerror = async () => {
+  status.textContent = 'FALHA: o servidor não conseguiu entregar a imagem. Consultando diagnóstico…';
+  status.style.color = '#ff9d9d';
+  try {
+    const response = await fetch('/api/apify-photo-proxy');
+    const data = await response.json();
+    status.textContent = 'FALHA no download pelo servidor: ' + (data.error || 'erro desconhecido') + (data.upstreamStatus ? ' (HTTP ' + data.upstreamStatus + ')' : '') + (data.reason ? ' (' + data.reason + ')' : '');
+  } catch (_) {
+    status.textContent = 'FALHA: endpoint de teste indisponível.';
+  }
+};
+img.src = '/api/apify-photo-proxy';
 </script>
 </body>
 </html>
