@@ -45,6 +45,9 @@ export default async function handler(req, res) {
         : data.profile.related,
     };
 
+    // Cache successful profile lookups at Vercel's edge so repeat searches return quickly.
+    // The short TTL keeps profile details reasonably fresh; stale responses can be served while refreshing.
+    res.setHeader("Cache-Control", "public, s-maxage=60, stale-while-revalidate=120");
     return res.status(200).json({ ...data, profile });
   } catch (error) {
     console.error("instagram_proxy_failed", error);
