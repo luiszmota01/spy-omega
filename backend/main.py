@@ -35,6 +35,7 @@ def make_client() -> Client:
     sessionid = os.getenv("IG_SESSIONID", "").strip()
     username = os.getenv("IG_USERNAME", "").strip()
     password = os.getenv("IG_PASSWORD", "").strip()
+    strategy = os.getenv("IG_SESSION_STRATEGY", "legacy").strip().lower()
 
     cl = Client(
         request_timeout=15,
@@ -43,12 +44,50 @@ def make_client() -> Client:
         public_transport_impersonate="chrome136",
     )
 
+    # Keep production's current session-ID flow as the default. The alternative
+    # is opt-in so it can be tested on a staging service before any promotion.
+    if strategy == "validated":
+        settings_path = os.getenv(
+            "IG_SETTINGS_PATH", "/tmp/spy_omega_instagram_settings.json"
+        )
+        if username and password:
+            try:
+                if os.path.isfile(settings_path):
+                    cl.load_settings(settings_path)
+                # instagrapi reuses a valid saved session and can refresh it
+                # using credentials when Instagram invalidates the old session.
+                cl.login(username, password)
+                cl.dump_settings(settings_path)
+                print("instagram_session_strategy=validated login=ok")
+                return cl
+            except Exception as exc:
+                # Do not print exception text: some libraries may include
+                # request details. Keep diagnostics useful without leaking secrets.
+                print(
+                    "instagram_session_strategy=validated login_failed="
+                    f"{type(exc).__name__}"
+                )
+
+        # If credentials aren't configured or the credential-based flow fails,
+        # retain the existing session-ID path as a fallback for the test.
+        if sessionid:
+            try:
+                cl.login_by_sessionid(sessionid)
+                print("instagram_session_strategy=validated fallback=sessionid")
+                return cl
+            except Exception as exc:
+                print(
+                    "instagram_session_strategy=validated sessionid_failed="
+                    f"{type(exc).__name__}"
+                )
+        return cl
+
     if sessionid:
         try:
             cl.login_by_sessionid(sessionid)
             return cl
         except Exception as exc:
-            print(f"session login failed: {type(exc).__name__}: {exc}")
+            print(f"session login failed: {type(exc).__name__}")
 
     if username and password:
         cl.login(username, password)
@@ -99,19 +138,19 @@ def lookup_profile(username: str) -> dict[str, Any]:
         try:
             user = cl.user_info_by_username_v1(username)
         except Exception as exc:
-            errors.append(f"user_info_by_username_v1: {type(exc).__name__}: {exc}")
+            errors.append(f"user_info_by_username_v1: {type(exc).__name__}")
 
     if user is None:
         try:
             user = cl.user_info_by_username(username, use_cache=False)
         except Exception as exc:
-            errors.append(f"user_info_by_username: {type(exc).__name__}: {exc}")
+            errors.append(f"user_info_by_username: {type(exc).__name__}")
 
     if user is None:
         try:
             user = cl.user_info_by_username_v2_gql(username)
         except Exception as exc:
-            errors.append(f"user_info_by_username_v2_gql: {type(exc).__name__}: {exc}")
+            errors.append(f"user_info_by_username_v2_gql: {type(exc).__name__}")
 
     if user is None:
         raise RuntimeError(" | ".join(errors) or "Instagram profile lookup failed")
@@ -205,7 +244,7 @@ def profile(username: str = Query(..., min_length=1, max_length=30)):
     try:
         return {"profile": lookup_profile(username)}
     except Exception as exc:
-        print(f"instagram_profile_lookup_failed: {type(exc).__name__}: {exc}")
+        print(f"instagram_profile_lookup_failed: {type(exc).__name__}")
         raise HTTPException(
             status_code=502,
             detail="Não foi possível consultar o Instagram agora.",
@@ -233,7 +272,7 @@ def feed(
         try:
             posts.extend(get_feed_for_user(username, amount=4))
         except Exception as exc:
-            print(f"instagram_feed_lookup_failed[{username}]: {type(exc).__name__}: {exc}")
+            print(f"instagram_feed_lookup_failed[{username}]: {type(exc).__name__}")
 
     posts.sort(key=lambda item: item.get("timestamp", ""), reverse=True)
     return {"posts": posts[:12], "suggestions": suggestions}
