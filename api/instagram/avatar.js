@@ -13,7 +13,7 @@ function isAllowedImageUrl(value) {
   }
 }
 
-async function downloadImage(url, timeoutMs = 15000) {
+async function downloadImage(url, timeoutMs = 10000) {
   if (!isAllowedImageUrl(url)) return null;
   const response = await fetch(url, {
     headers: { Accept: IMAGE_ACCEPT, Referer: "https://www.instagram.com/", "User-Agent": USER_AGENT },
@@ -60,22 +60,28 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const username = clean(req.query?.username);
-  if (!/^[a-z0-9._]{1,30}$/.test(username)) {
-    return res.status(400).json({ error: "Usuário do Instagram inválido" });
-  }
-
-  const token = String(process.env.APIFY_TOKEN || "").trim();
-  if (!token) {
-    return res.status(503).json({ error: "APIFY_TOKEN não está configurado no ambiente Preview da Vercel." });
-  }
-
   try {
-    const image = await getApifyImage(username, token);
+    // Use the image URL already returned by the profile/feed request.
+    // This avoids launching a second Apify scrape just to retrieve the avatar.
+    const sourceUrl = String(req.query?.url || "").trim();
+    let image = sourceUrl ? await downloadImage(sourceUrl) : null;
+
+    // Compatibility fallback for existing callers that only pass a username.
+    if (!image && !sourceUrl) {
+      const username = clean(req.query?.username);
+      if (!/^[a-z0-9._]{1,30}$/.test(username)) {
+        return res.status(400).json({ error: "Usuário do Instagram inválido" });
+      }
+      const token = String(process.env.APIFY_TOKEN || "").trim();
+      if (!token) return res.status(503).json({ error: "APIFY_TOKEN não está configurado no ambiente Preview da Vercel." });
+      image = await getApifyImage(username, token);
+    }
+
+    if (!image) return res.status(502).json({ error: "Não foi possível carregar a foto de perfil." });
     res.setHeader("Content-Type", image.contentType);
     res.setHeader("Content-Length", String(image.buffer.length));
-    res.setHeader("Cache-Control", "public, max-age=300, s-maxage=3600, stale-while-revalidate=86400");
-    res.setHeader("X-Avatar-Source", "apify");
+    res.setHeader("Cache-Control", "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800");
+    res.setHeader("X-Avatar-Source", sourceUrl ? "apify-profile-result" : "apify");
     return res.status(200).send(image.buffer);
   } catch (error) {
     console.error("apify_avatar_failed", { name: error?.name || "Error" });
