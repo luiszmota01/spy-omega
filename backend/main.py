@@ -138,19 +138,19 @@ def lookup_profile(username: str) -> dict[str, Any]:
         try:
             user = cl.user_info_by_username_v1(username)
         except Exception as exc:
-            errors.append(f"user_info_by_username_v1: {type(exc).__name__}: {exc}")
+            errors.append(f"user_info_by_username_v1: {type(exc).__name__}")
 
     if user is None:
         try:
             user = cl.user_info_by_username(username, use_cache=False)
         except Exception as exc:
-            errors.append(f"user_info_by_username: {type(exc).__name__}: {exc}")
+            errors.append(f"user_info_by_username: {type(exc).__name__}")
 
     if user is None:
         try:
             user = cl.user_info_by_username_v2_gql(username)
         except Exception as exc:
-            errors.append(f"user_info_by_username_v2_gql: {type(exc).__name__}: {exc}")
+            errors.append(f"user_info_by_username_v2_gql: {type(exc).__name__}")
 
     if user is None:
         raise RuntimeError(" | ".join(errors) or "Instagram profile lookup failed")
@@ -244,7 +244,7 @@ def profile(username: str = Query(..., min_length=1, max_length=30)):
     try:
         return {"profile": lookup_profile(username)}
     except Exception as exc:
-        print(f"instagram_profile_lookup_failed: {type(exc).__name__}: {exc}")
+        print(f"instagram_profile_lookup_failed: {type(exc).__name__}")
         raise HTTPException(
             status_code=502,
             detail="Não foi possível consultar o Instagram agora.",
@@ -272,7 +272,7 @@ def feed(
         try:
             posts.extend(get_feed_for_user(username, amount=4))
         except Exception as exc:
-            print(f"instagram_feed_lookup_failed[{username}]: {type(exc).__name__}: {exc}")
+            print(f"instagram_feed_lookup_failed[{username}]: {type(exc).__name__}")
 
     posts.sort(key=lambda item: item.get("timestamp", ""), reverse=True)
     return {"posts": posts[:12], "suggestions": suggestions}
